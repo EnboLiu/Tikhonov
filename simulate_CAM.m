@@ -1,4 +1,4 @@
-function  [EGM, VT]  = simulate_CAM(class,W,W_e,sim_time,varargin)
+function  [F, VT]  = simulate_CAM(class,W,W_e,sim_time,varargin)
 
 
 %
@@ -21,8 +21,10 @@ function  [EGM, VT]  = simulate_CAM(class,W,W_e,sim_time,varargin)
 %   Authors:    Ferney Beltran-Molina, ferney.beltran@gmail.com
 %               - New restitution curves
 %
+%   Modified:   2016
+%   Author:     Enbo Liu
+%               -Tikhonov regularization with L-curve   
 %
-%   
 %   'class' describes the type of stimulation
 %           1) 'plane': plane wavefronts, for regular rhythms
 %           2) 'S1-S2': cross-stimulation, for spiral dynamics
@@ -67,14 +69,14 @@ addpath(genpath(pwd));
 if mod(length(varargin),2), error('Initialization error');end
 if nargin == 0, class = 'plane'; end
 if nargin < 2, W = 34; end 
-if nargin < 3, W_e = 10; end 
-if nargin < 4, sim_time  = 2; end
+if nargin < 3, W_e = 15; end 
+if nargin < 4, sim_time  = 1; end
 
 % Tissue dimensions
 tissue_size = W*W;
 
 % Time step in simulations 
-FsSim   = 1000;
+FsSim   = 1000;  %1000
 Dt      = 1/FsSim;           
 t       = 0;
 
@@ -102,15 +104,15 @@ end
 %   Transmembrane potentials
 TMP                 = zeros(tissue_size,sim_time*FsFrame+1);
 
-%   Reference action potential
-load Vref;
+%   Reference action potential         
+load Vref;      
 length_vref     = length(Vref);        
 
 %   Cardiac restitution
 cAPD    = SetParameter(1.0,'ConstRestitution',varargin{:});
 if length(cAPD)==1, cCV=cAPD; else cCV = cAPD(2); cAPD=cAPD(1);end
-K       = 0.9; 
-F_APD   = 0.1;       
+K       = 0.9;  
+F_APD   = 0.1;  
 t_desp  = -0.4*ones(tissue_size,1);           
 t_rep   = -0.2*ones(tissue_size,1);
 rAPD    = 0.2*ones(size(t_rep));
@@ -126,7 +128,7 @@ if strcmp(class, 'plane')
     stim_nodes = stimulation_region(W,class,1,1);
     stim_nodes_index = ones(length(pulse_array),1);
 elseif strcmp(class, 'S1-S2')
-    stim_nodes = stimulation_region(W,class,round(W/2),2);
+    stim_nodes = stimulation_region(W,'random',round(W/2),2);
     stim_nodes_index = [1 2];
 else
     stim_nodes = SetParameter(0,'StimulationZones',varargin{:});
@@ -299,24 +301,23 @@ while t<sim_time
         V_frame(:,Frame_index)= V;
         
         
-        
         %{ Tikhonov regularization with 0-order
         CardiacSignal(:,Frame_index) = transfer_matrix*V;%**********
         % this is the signal acquired as the  GOT b
        
-        b = transfer_matrix*V;        
-        
-        A   = transfer_matrix;
-        
-        lambda = 3.00;
-        
-        tissuesize = size(A,2);
-        
-        A = [A ; lambda^2*eye(tissuesize)];
-        
-        b_b = [b ; zeros(tissuesize,1)];
-        
-        Xe = lsqr(A,b_b);
+%         b = transfer_matrix*V;        
+%         
+%         A   = transfer_matrix;
+%         
+%         lambda = 3.00;
+%         
+%         tissuesize = size(A,2);
+%         
+%         A = [A ; lambda^2*eye(tissuesize)];
+%         
+%         b_b = [b ; zeros(tissuesize,1)];
+%         
+%         Xe = lsqr(A,b_b);
         
         
         if (mod(t_mes,FsSim/FsFrame)==0)
@@ -327,11 +328,11 @@ while t<sim_time
         
         %VIPtemp=M_inv*CardiacSignal(:,Frame_index);
         
-        VIPtemp = Xe - 80;
+%         VIPtemp = Xe - 80;
+%         
+%         VIP(:,Frame_index)  = VIPtemp;
         
-        VIP(:,Frame_index)  = VIPtemp;
-        
-       errors(1,Frame_index) = the_error(V,Xe);    %addition
+%        errors(1,Frame_index) = the_error(V,Xe);    %addition
         
         Frame_index         = Frame_index+1;
         
@@ -345,7 +346,98 @@ end
 
 toc
 
-save('errors.mat','errors');
+% tikhonov regularization with L-curve
+
+et = 1;
+
+while(et < Frame_index)
+
+        % CardiacSignal(:,Frame_index) = transfer_matrix*V;%**********
+        % this is the signal acquired as the  GOT b
+        
+        b = CardiacSignal(:,et);        
+        
+        Xe = zeros(size(b));
+        
+        A = transfer_matrix;
+ 
+        
+%         % L-curve method
+%         
+%         V = V_frame(:,et) 
+%         lambda = 0;
+%         point  = 1; 
+%         
+%         while (point < 21)
+%         
+%         tissuesize = size(A,2);
+%         
+%         A_A = [A ; lambda^2*eye(tissuesize)];
+%         
+%         b_b = [b ; zeros(tissuesize,1)];
+%         
+%         Xe = lsqr(A_A,b_b);
+%         
+%         %V_frame(:,Frame_index)= V;        
+%         
+%         res(:, point) = norm(Xe);
+%         semi(:,point) = norm(A*Xe - b);
+%         tot(:,point)  = norm(A*Xe - b)+norm(Xe);
+%         lambdaR(:,point) = lambda;
+%         
+%        
+%         lambda = lambda + 0.1;         
+%         point  = point + 1 ;
+%         
+%         end
+%         
+% %         x = semi;
+% %         y = res;
+%         
+% %         plot(x,y);
+% %         xlabel('norm(A*Xe - b)');
+% %         ylabel('norm(Xe)');
+% %         grid on;
+%         position = find(tot==min(tot));
+%         
+%         
+%         lambda = (position-1)*0.1;     
+%         lambdaSet(:,et) = lambda;     
+%         save('lambdas.mat','lambdaSet');
+%         % end of L-curve
+        
+        
+        
+        lambda = 0.6;
+        
+        tissuesize = size(A,2);
+        
+        A = [A ; lambda.^2 * eye(tissuesize)];
+        
+        b_b = [b ; zeros(tissuesize,1)];
+        
+        Xe = lsqr(A,b_b);
+                
+%         if (mod(t_mes,FsSim/FsFrame)==0)
+%             if t_mes>0, TMP(:,round(t_mes/(FsSim/FsFrame))) = V; end
+%         end              
+        
+        VIPtemp = Xe;
+        
+        VIP(:,et)  = VIPtemp;
+        
+        errors(1,et) = the_error(V,Xe);    %addition
+              
+        et = et+1;
+         
+end
+
+       errorcharacter = mean(errors);
+       save('errorsc.mat','errorcharacter');
+       save('errors.mat','errors');
+       
+%axis([0 2000 0.99 1]);
+%save('errors.mat','errors');
 
 %%   VIDEO
 
@@ -382,17 +474,18 @@ function pvo = SetParameter (DefaultValue,ParameterName,varargin)
     pvo     = pv;
     
     
-function vAPD = apd_restitution(DI,cAPD)
+function vAPD = apd_restitution(DI,cAPD)    %%action poten- tial duration
     Tau_apd = 25;
     vAPD    = cAPD*0.0700*(1-exp(-DI/Tau_apd));
 
  
     
-function vCV = cv_restitution(DI,cVC)
+function vCV = cv_restitution(DI,cVC)   %CV, conduction velocity
     Tau_cv  = 35;
     vCV     = cVC*60*(1-exp(-DI/Tau_cv));
 
 
 function error_character = the_error(v_real,v_estimated)
-    error_character = sum((v_real - v_estimated).^2)/sum(v_real.^2);
+    error_character = sum((v_real - v_estimated).^2);
+  
    
